@@ -4,6 +4,7 @@ setwd("C:/Users/JPL19.IC/OneDrive - Imperial College London/Research projects/Ma
 # LOAD DATA
 ##################################################
 
+library(stringr)
 # first batch
 all.files <- list.files(path = "C:/Users/Admin/OneDrive - Imperial College London/Research projects/Masters thesis/Field course temp folder/R wd/deployments",
                         include.dirs = TRUE,
@@ -39,7 +40,7 @@ for(file in txt.files){
 
 # second batch from Sui's hard drive 22/07/2020
 # need to extract grid point from folder name
-all.files <- list.files(path = "C:/Users/JPL19.IC/OneDrive - Imperial College London/Research projects/Masters thesis/Field course temp folder/R wd/deployments2",
+all.files <- list.files(path = "C:/Users/Admin/OneDrive - Imperial College London/Research projects/Masters thesis/Field course temp folder/R wd/deployments2",
                         include.dirs = TRUE,
                         recursive = TRUE,
                         full.names = TRUE,
@@ -72,10 +73,12 @@ for(file in txt.files){
   datmore <- merge(datmore, data, all = TRUE)
 }
 
+
 # merge two batches of data
 dat <- merge(dat, datmore, all = TRUE)
 
 # remove ' for low squirrel before writing to csv
+
 dat$Keyword_1[which(dat$Keyword_1 == "Low's Squirrel")] <- "Lows Squirrel"
 write.csv(dat, "dat.csv")
 
@@ -137,7 +140,9 @@ renames <- list(c("Bird sp.", "Bird"),
                 c("Short-tailed babbler", "Short-tailed Babbler"),
                 c("Species, Bearded Pig", "Bearded Pig"),
                 c("Species, Pig-tailed macaque", "Pig-tailed Macaque"),
-                c("White-crowned Sharma", "White-crowned Shama"))
+                c("White-crowned Sharma", "White-crowned Shama"),
+                c("Banded Civet", "Banded palm civet")
+                )
 
 for(this_rename in renames){
   dat2$Keyword_1[which(dat2$Keyword_1 == this_rename[1])] <- this_rename[2]
@@ -193,6 +198,7 @@ idx <- grepl("B10-2|B100-2|D1-2|D10-2|D100-1|D100-2|E1-1|E1-2|E10-1|E10-2|E100-1
 dat5 <- dat4[idx,]
 
 # check common species
+require(tidyr)
 large_mam <- subset(dat5, Keyword_1 %in% c("Bearded Pig",
                                            "Red Muntjac",
                                            "Pig-tailed Macaque",
@@ -200,7 +206,7 @@ large_mam <- subset(dat5, Keyword_1 %in% c("Bearded Pig",
                                            "Malayan Civet",
                                            "Lesser Mouse-deer",
                                            "Malayan Porcupine",
-                                           "Banded Civet",
+                                           "Banded palm civet",
                                            "Yellow Muntjac",
                                            "Sun Bear",
                                            "Orangutan",
@@ -232,6 +238,8 @@ species_hits <- large_mam %>%
   as.data.frame(species_hits) %>%
   mutate(total = rowSums(.[2:4]))
 
+logging_effort <- aggregate(as.numeric(depl_dur) ~ as.factor(logging), large_mam,sum)
+
 write.csv(species_hits, "species_hits.csv")
 
 ## subset common species
@@ -245,7 +253,7 @@ dat6$Keyword_1 <- factor(dat6$Keyword_1)
 
 # soil moisture
 flux <- read.csv("SAFE_FluxTower_AllMet_2012_2018.csv")
-flux$DateTime <- as.POSIXct(flux$ï..timestamp, format = '%d/%m/%Y %H:%M', tz = "GMT")
+flux$DateTime <- as.POSIXct(flux$?..timestamp, format = '%d/%m/%Y %H:%M', tz = "GMT")
 
 s_moist <- vector(length = 3051)
 
@@ -692,12 +700,107 @@ dat8 <- dat7[dat7$Freq != 0,]
 p <- bwplot((Group/depl_dur)/(Freq/depl_dur) ~ logging | Species, data=dat8, scale=list(y=list(relation='free')))
 print(p)
 
+#all species: removing red muntjac and lesser mouse-deer as not social species
+ggplot(dat8, aes(x = Group/Freq, fill = logging)) +
+  geom_histogram() +
+  facet_wrap(~Species) +
+  ylab("Count")
+
+dat8 <- dat8[dat8$Species == "Bearded Pig" | dat8$Species == "Malayan Porcupine"|
+             dat8$Species == "Pig-tailed Macaque"| dat8$Species == "Sambar Deer",]
+
+group.mod <- lm(Group/Freq ~ logging * Species, data = dat8)
+
+summary(group.mod)
+
+group.em <- emmeans(group.mod, pairwise ~ logging | Species)
+plot(group.em, comparisons = TRUE, ylab = "")
+
+q <- plot(group.em,
+          plotit = FALSE)
+
+# col
+ggplot(q, aes(x = Species, y = the.emmean,)) +
+  geom_point(aes(shape = logging, color = logging), position = position_dodge(0.8)) +
+  scale_colour_manual(values=c("#00AFBB", "#E7B800", "#FC4E07")) 
+
+d=data.frame(drink=c("coffee","tea","water"), mean=c(3,6,2), lower=c(2.6,5.6,1.8), upper=c(3.5,6.3,2.8))
+
+#ggplot() + 
+  #geom_pointrange(data=d, mapping=aes(x=drink, y=mean, ymin=upper, ymax=lower), width=0.2, size=1, color=drink, fill="white", shape=drink) 
+  
+ggplot() + 
+  geom_pointrange(data=d, mapping=aes(x= drink, y= mean, ymin = upper, ymax = lower), width=0.2, size=1, fill="white") 
+
+d
+
+ggplot(q, aes(x = Species, fill = logging)) +
+  geom_pointrange(q, mapping = aes(y = the.emmean, ymin = lower.CL, ymax= upper.CL),
+                  size = 0.8, shape = 21, position = position_dodge(0.8)) +
+  scale_fill_manual(values=c("#00AFBB", "#E7B800", "#FC4E07")) +
+  scale_colour_manual(values = c("black", "black", "black")) +
+  
+  
+  #axis
+  ylab("Probability of being detected in a group") +
+  xlab("") +
+  theme(axis.ticks = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.position = c(0.87, 0.8), legend.title=element_blank()) +
+  scale_y_continuous(limits = c(-0.05, 1), breaks = c(0.00, 0.25, 0.50, 0.75, 1.00)) +
+  
+  #signif stars
+  geom_signif(stat="identity",
+              data=data.frame(x=c(0.73, 0.73, 1), xend=c(1, 1.27, 1.27),
+                              y=c(0.79, 0.88, 0.82), annotation=c("*", "*", "**"),
+                              logging=c("pre-logging", "during logging", "post-logging")),
+              aes(x=x, xend=xend, y=y, yend=y, annotation=annotation)) +
+  geom_signif(stat="identity",
+              data=data.frame(x=c(1.73, 2), xend=c(2.27, 2.27),
+                              y=c(0.98, 0.92), annotation=c("**", "**"),
+                              logging = c("pre-logging", "during logging")),
+              aes(x=x,xend=xend, y=y, yend=y, annotation=annotation)) +
+  geom_signif(stat="identity",
+              data=data.frame(x=c(2.73), xend=c(3.27),
+                              y=c(0.5), annotation=c("***"),
+                              logging = c("pre-logging", "during logging")),
+              aes(x=x,xend=xend, y=y, yend=y, annotation=annotation))
+
+# grey
+ggplot(q, aes(x = Species, fill = logging)) +
+  geom_pointrange(q, mapping = aes(y = the.emmean, ymin = lower.CL, ymax= upper.CL),
+                  size = 0.8, shape = 21, position = position_dodge(0.8)) +
+  scale_fill_manual(values=c("black", "white", "dark grey")) +
+  scale_colour_manual(values = c("black", "black", "black")) +
+  
+  #axis
+  ylab("Probability of being detected in a group") +
+  xlab("") +
+  theme(axis.ticks = element_blank(),
+        panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        legend.position = c(0.87, 0.8), legend.title=element_blank()) +
+  scale_y_continuous(limits = c(-0.05, 1), breaks = c(0.00, 0.25, 0.50, 0.75, 1.00)) +
+  
+  #signif stars
+  geom_signif(stat="identity",
+              data=data.frame(x=c(0.73, 0.73, 1), xend=c(1, 1.27, 1.27),
+                              y=c(0.79, 0.87, 0.82), annotation=c("*", "*", "**"),
+                              logging=c("pre-logging", "during logging", "post-logging")),
+              aes(x=x, xend=xend, y=y, yend=y, annotation=annotation))
+#geom_signif(stat="identity",
+#           data=data.frame(x=c(1.73, 2), xend=c(2.27, 2.27),
+#                          y=c(-0.043, 0.27), annotation=c("**", "**"),
+#                         logging = c("pre-logging", "during logging")),
+#        aes(x=x,xend=xend, y=y, yend=y, annotation=annotation))
+
+#########################
+
+#just pigs and porcs
 # subsets
 pigs <- dat8[dat8$Species == "Bearded Pig",]
 porcs <- dat8[dat8$Species == "Malayan Porcupine",]
 
 pigsnporcs <- dat8[dat8$Species == "Bearded Pig" | dat8$Species == "Malayan Porcupine",]
-
 
 # distribution
 ggplot(pigsnporcs, aes(x = Group/Freq, fill = logging)) +
@@ -785,6 +888,7 @@ ggplot(q, aes(x = Species, fill = logging)) +
 group_pre <- subset(dat6, Group == 1 & logging == "pre-logging" & Keyword_1 == "Malayan Porcupine")
 group_dur <- subset(dat6, Group == 1 & logging == "during logging" & Keyword_1 == "Malayan Porcupine")
 group_post <- subset(dat6, Group == 1 & logging == "post-logging" & Keyword_1 == "Malayan Porcupine")
+
 #pre
 idx.juv <- grepl("Juvenile", group_pre$Keyword_11)
 summary(idx.juv)
@@ -817,7 +921,7 @@ dat6$tt <- as.POSIXct(dat6$t, format="%H:%M:%S")
 dat6$dt <- (as.numeric(as.POSIXct(paste("2014-01-01", dat6$t))) - 
         as.numeric(as.POSIXct("2014-01-01 0:0:0")))/60/60/24
 
-# test if pig activity is significantly different at logging periods
+#1.  test if pig activity is significantly different at logging periods
 tpigpre <- 2*pi*dat6$dt[dat6$Keyword_1=="Bearded Pig" & dat6$logging == "pre-logging"]
 tpigdur <- 2*pi*dat6$dt[dat6$Keyword_1=="Bearded Pig" & dat6$logging == "during logging"]
 tpigpost <- 2*pi*dat6$dt[dat6$Keyword_1=="Bearded Pig" & dat6$logging == "post-logging"]
@@ -835,7 +939,25 @@ compareAct(list(fpigpre, fpigdur))
 compareAct(list(fpigpre, fpigpost))
 compareAct(list(fpigdur, fpigpost))
 
-# test if porcupine activity is significantly different at logging periods
+#2.  test if mouse-deer activity is significantly different at logging periods
+tmousedeerpre <- 2*pi*dat6$dt[dat6$Keyword_1=="Lesser Mouse-deer" & dat6$logging == "pre-logging"]
+tmousedeerdur <- 2*pi*dat6$dt[dat6$Keyword_1=="Lesser Mouse-deer" & dat6$logging == "during logging"]
+tmousedeerpost <- 2*pi*dat6$dt[dat6$Keyword_1=="Lesser Mouse-deer" & dat6$logging == "post-logging"]
+
+# default boostrap reps is 999
+fmousedeerpre <- fitact(tmousedeerpre, sample="data")
+fmousedeerdur <- fitact(tmousedeerdur, sample="data")
+fmousedeerpost <- fitact(tmousedeerpost, sample="data")
+
+fmousedeerpre@act
+fmousedeerdur@act
+fmousedeerpost@act
+
+compareAct(list(fmousedeerpre, fmousedeerdur))
+compareAct(list(fmousedeerpre, fmousedeerpost))
+compareAct(list(fmousedeerdur, fmousedeerpost))
+
+#3. test if porcupine activity is significantly different at logging periods
 tporcpre <- 2*pi*dat6$dt[dat6$Keyword_1=="Malayan Porcupine" & dat6$logging == "pre-logging"]
 tporcdur <- 2*pi*dat6$dt[dat6$Keyword_1=="Malayan Porcupine" & dat6$logging == "during logging"]
 tporcpost <- 2*pi*dat6$dt[dat6$Keyword_1=="Malayan Porcupine" & dat6$logging == "post-logging"]
@@ -853,44 +975,174 @@ compareAct(list(fporcpre, fporcdur))
 compareAct(list(fporcpre, fporcpost))
 compareAct(list(fporcdur, fporcpost))
 
+#4. test if macaque activity is significantly different at logging periods
+tmacaquepre <- 2*pi*dat6$dt[dat6$Keyword_1=="Pig-tailed Macaque" & dat6$logging == "pre-logging"]
+tmacaquedur <- 2*pi*dat6$dt[dat6$Keyword_1=="Pig-tailed Macaque" & dat6$logging == "during logging"]
+tmacaquepost <- 2*pi*dat6$dt[dat6$Keyword_1=="Pig-tailed Macaque" & dat6$logging == "post-logging"]
+
+# default boostrap reps is 999
+fmacaquepre <- fitact(tmacaquepre, sample="data")
+fmacaquedur <- fitact(tmacaquedur, sample="data")
+fmacaquepost <- fitact(tmacaquepost, sample="data")
+
+fmacaquepre@act
+fmacaquedur@act
+fmacaquepost@act
+
+compareAct(list(fmacaquepre, fmacaquedur))
+compareAct(list(fmacaquepre, fmacaquepost))
+compareAct(list(fmacaquedur, fmacaquepost))
+
+#5. test if muntjac activity is significantly different at logging periods
+tmuntjacpre <- 2*pi*dat6$dt[dat6$Keyword_1=="Red Muntjac" & dat6$logging == "pre-logging"]
+tmuntjacdur <- 2*pi*dat6$dt[dat6$Keyword_1=="Red Muntjac" & dat6$logging == "during logging"]
+tmuntjacpost <- 2*pi*dat6$dt[dat6$Keyword_1=="Red Muntjac" & dat6$logging == "post-logging"]
+
+# default boostrap reps is 999
+fmuntjacpre <- fitact(tmuntjacpre, sample="data")
+fmuntjacdur <- fitact(tmuntjacdur, sample="data")
+fmuntjacpost <- fitact(tmuntjacpost, sample="data")
+
+fmuntjacpre@act
+fmuntjacdur@act
+fmuntjacpost@act
+
+compareAct(list(fmuntjacpre, fmuntjacdur))
+compareAct(list(fmuntjacpre, fmuntjacpost))
+compareAct(list(fmuntjacdur, fmuntjacpost))
+
+#6. test if sambar activity is significantly different at logging periods
+tsambarpre <- 2*pi*dat6$dt[dat6$Keyword_1=="Sambar Deer" & dat6$logging == "pre-logging"]
+tsambardur <- 2*pi*dat6$dt[dat6$Keyword_1=="Sambar Deer" & dat6$logging == "during logging"]
+tsambarpost <- 2*pi*dat6$dt[dat6$Keyword_1=="Sambar Deer" & dat6$logging == "post-logging"]
+
+# default boostrap reps is 999
+fsambarpre <- fitact(tsambarpre, sample="data")
+fsambardur <- fitact(tsambardur, sample="data")
+fsambarpost <- fitact(tsambarpost, sample="data")
+
+fsambarpre@act
+fsambardur@act
+fsambarpost@act
+
+compareAct(list(fsambarpre, fsambardur))
+compareAct(list(fsambarpre, fsambarpost))
+compareAct(list(fsambardur, fsambarpost))
+
+# table
+fpigpre@act
+fpigdur@act
+fpigpost@act
+fmousedeerpre@act
+fmousedeerdur@act
+fmousedeerpost@act
+fporcpre@act
+fporcdur@act
+fporcpost@act
+fmacaquepre@act
+fmacaquedur@act
+fmacaquepost@act
+fmuntjacpre@act
+fmuntjacdur@act
+fmuntjacpost@act
+fsambarpre@act
+fsambardur@act
+fsambarpost@act
+
+compareAct(list(fpigpre, fpigdur))
+compareAct(list(fpigpre, fpigpost))
+compareAct(list(fpigdur, fpigpost))
+compareAct(list(fmousedeerpre, fmousedeerdur))
+compareAct(list(fmousedeerpre, fmousedeerpost))
+compareAct(list(fmousedeerdur, fmousedeerpost))
+compareAct(list(fporcpre, fporcdur))
+compareAct(list(fporcpre, fporcpost))
+compareAct(list(fporcdur, fporcpost))
+compareAct(list(fmacaquepre, fmacaquedur))
+compareAct(list(fmacaquepre, fmacaquepost))
+compareAct(list(fmacaquedur, fmacaquepost))
+compareAct(list(fmuntjacpre, fmuntjacdur))
+compareAct(list(fmuntjacpre, fmuntjacpost))
+compareAct(list(fmuntjacdur, fmuntjacpost))
+compareAct(list(fsambarpre, fsambardur))
+compareAct(list(fsambarpre, fsambarpost))
+compareAct(list(fsambardur, fsambarpost))
+
+
 # plot 
-par(mfrow = c(3,2))
+par(mfrow = c(3,6))
+
 plot(fpigpre)
+plot(fmousedeerpre)
 plot(fporcpre)
+plot(fmacaquepre)
+plot(fmuntjacpre)
+plot(fsambarpre)
+
 plot(fpigdur)
+plot(fmousedeerdur)
 plot(fporcdur)
+plot(fmacaquedur)
+plot(fmuntjacdur)
+plot(fsambardur)
+
 plot(fpigpost)
+plot(fmousedeerpost)
 plot(fporcpost)
+plot(fmacaquepost)
+plot(fmuntjacpost)
+plot(fsambarpost)
 
 
-# visualise activity patterns
+# visualise activity patterns using circular data and kernel density
 
 dat6$dt <- (as.numeric(as.POSIXct(paste("2014-01-01", dat6$t))) - 
               as.numeric(as.POSIXct("2014-01-01 0:0:0")))/60/60
 
-# first do the pigs
+# redo subsets
 tpigpre <- dat6$dt[dat6$Keyword_1=="Bearded Pig" & dat6$logging == "pre-logging"]
 tpigdur <- dat6$dt[dat6$Keyword_1=="Bearded Pig" & dat6$logging == "during logging"]
 tpigpost <- dat6$dt[dat6$Keyword_1=="Bearded Pig" & dat6$logging == "post-logging"]
+tmousedeerpre <- dat6$dt[dat6$Keyword_1=="Lesser Mouse-deer" & dat6$logging == "pre-logging"]
+tmousedeerdur <- dat6$dt[dat6$Keyword_1=="Lesser Mouse-deer" & dat6$logging == "during logging"]
+tmousedeerpost <- dat6$dt[dat6$Keyword_1=="Lesser Mouse-deer" & dat6$logging == "post-logging"]
+tporcpre <- dat6$dt[dat6$Keyword_1=="Malayan Porcupine" & dat6$logging == "pre-logging"]
+tporcdur <- dat6$dt[dat6$Keyword_1=="Malayan Porcupine" & dat6$logging == "during logging"]
+tporcpost <- dat6$dt[dat6$Keyword_1=="Malayan Porcupine" & dat6$logging == "post-logging"]
+tmacaquepre <- dat6$dt[dat6$Keyword_1=="Pig-tailed Macaque" & dat6$logging == "pre-logging"]
+tmacaquedur <- dat6$dt[dat6$Keyword_1=="Pig-tailed Macaque" & dat6$logging == "during logging"]
+tmacaquepost <- dat6$dt[dat6$Keyword_1=="Pig-tailed Macaque" & dat6$logging == "post-logging"]
+tmuntjacpre <- dat6$dt[dat6$Keyword_1=="Red Muntjac" & dat6$logging == "pre-logging"]
+tmuntjacdur <- dat6$dt[dat6$Keyword_1=="Red Muntjac" & dat6$logging == "during logging"]
+tmuntjacpost <- dat6$dt[dat6$Keyword_1=="Red Muntjac" & dat6$logging == "post-logging"]
+tsambarpre <- dat6$dt[dat6$Keyword_1=="Sambar Deer" & dat6$logging == "pre-logging"]
+tsambardur <- dat6$dt[dat6$Keyword_1=="Sambar Deer" & dat6$logging == "during logging"]
+tsambarpost <- dat6$dt[dat6$Keyword_1=="Sambar Deer" & dat6$logging == "post-logging"]
+
 
 # circular
 tpigpre <- circular(tpigpre, units = "hours")
 tpigdur <- circular(tpigdur, units = "hours")
 tpigpost <- circular(tpigpost, units = "hours")
-
-# next do the porcs
-tporcpre <- dat6$dt[dat6$Keyword_1=="Malayan Porcupine" & dat6$logging == "pre-logging"]
-tporcdur <- dat6$dt[dat6$Keyword_1=="Malayan Porcupine" & dat6$logging == "during logging"]
-tporcpost <- dat6$dt[dat6$Keyword_1=="Malayan Porcupine" & dat6$logging == "post-logging"]
-
-# circular
+tmousedeerpre <- circular(tmousedeerpre, units = "hours")
+tmousedeerdur <- circular(tmousedeerdur, units = "hours")
+tmousedeerpost <- circular(tmousedeerpost, units = "hours")
 tporcpre <- circular(tporcpre, units = "hours")
 tporcdur <- circular(tporcdur, units = "hours")
 tporcpost <- circular(tporcpost, units = "hours")
+tmacaquepre <- circular(tmacaquepre, units = "hours")
+tmacaquedur <- circular(tmacaquedur, units = "hours")
+tmacaquepost <- circular(tmacaquepost, units = "hours")
+tmuntjacpre <- circular(tmuntjacpre, units = "hours")
+tmuntjacdur <- circular(tmuntjacdur, units = "hours")
+tmuntjacpost <- circular(tmuntjacpost, units = "hours")
+tsambarpre <- circular(tsambarpre, units = "hours")
+tsambardur <- circular(tsambardur, units = "hours")
+tsambarpost <- circular(tsambarpost, units = "hours")
 
-
+# just pigs
 # plot greyscale
-par(mfrow = c(3,2))
+par(mfrow = c(1,3))
 
 #edit plot function and remove the lines
 plot.modal.region <- function(x, plot.type=c('line', 'circle'), xlab=NULL, ylab=NULL, xlim=NULL, ylim=NULL, main=NULL, polygon.control=list(), ...) {
@@ -921,7 +1173,7 @@ plot.modal.region <- function(x, plot.type=c('line', 'circle'), xlab=NULL, ylab=
               col = polygon.control$col,
               lty = polygon.control$lty,
               fillOddEven = polygon.control$fillOddEven)
-      }
+    }
   } else {
     warning('Not Yet Implemented for plot.type=circle')
   }
@@ -929,49 +1181,167 @@ plot.modal.region <- function(x, plot.type=c('line', 'circle'), xlab=NULL, ylab=
 
 # pre
 # pigs
-tpigpreres <- modal.region(tpigpre, bw=5, q = 0.5)
-tpigpreres2 <- modal.region(tpigpre, bw=5, q = 0.95)
+tpigpreres <- modal.region(tpigpre, bw=10, q = 0.5)
+tpigpreres2 <- modal.region(tpigpre, bw=10, q = 0.95)
 
-plot.modal.region(tpigpreres2, ylab="", xlab="", main ="pre-logging", ylim = c(0, 0.5),
-     polygon.control = list(col = "light grey"))
+plot.modal.region(tpigpreres2, ylab="", xlab="", main ="pre-logging", ylim = c(0, 0.35),
+                  polygon.control = list(col = "light grey"))
 par(new=TRUE)
-plot.modal.region(tpigpreres, ylab="", xlab="", main ="", ylim = c(0, 0.5),
+plot.modal.region(tpigpreres, ylab="", xlab="", main ="", ylim = c(0, 0.35),
                   polygon.control = list(col = "black"))
-#icon
-imgpig<-readJPEG("C:/Users/Admin/OneDrive - Imperial College London/Research projects/Masters thesis/Writing/Figures and Tables/pig.jpg")
-rasterImage(imgpig,0.1,0.25,4.1,0.45)
+
+# dur
+# pigs
+tpigdurres <- modal.region(tpigdur, bw=10, q = 0.5)
+tpigdurres2 <- modal.region(tpigdur, bw=10, q = 0.95)
+
+plot.modal.region(tpigdurres2, ylab="", xlab="", main ="during logging", ylim = c(0, 0.35),
+                  polygon.control = list(col = "light grey", border = TRUE))
+par(new=TRUE)
+plot.modal.region(tpigdurres, ylab="", xlab="", main ="", ylim = c(0, 0.35),
+                  polygon.control = list(col = "black"))
+
+# post
+# pigs
+tpigpostres <- modal.region(tpigpost, bw=10, q = 0.5)
+tpigpostres2 <- modal.region(tpigpost, bw=10, q = 0.95)
+
+plot.modal.region(tpigpostres2, ylab="", xlab="", main ="post-logging", ylim = c(0, 0.35),
+                  polygon.control = list(col = "light grey"))
+par(new=TRUE)
+plot.modal.region(tpigpostres, ylab="", xlab="", main ="", ylim = c(0, 0.35),
+                  polygon.control = list(col = "black"))
+
+# axes labels
+mtext("Hour in day", side=1, outer=TRUE, line=-2)
+mtext("Density", side=2, outer=TRUE, line=-1.75)
+
+
+
+# 6 species
+# plot greyscale
+par(mfrow = c(3,6))
+
+#edit plot function and remove the lines
+plot.modal.region <- function(x, plot.type=c('line', 'circle'), xlab=NULL, ylab=NULL, xlim=NULL, ylim=NULL, main=NULL, polygon.control=list(), ...) {
+  polygon.control.default <- list(density = NULL, angle = 45, border = NULL, col = NA, lty = par("lty"), fillOddEven = FALSE)
+  npc <- names(polygon.control)
+  npcd <- names(polygon.control.default)
+  polygon.control <- c(polygon.control, polygon.control.default[setdiff(npcd, npc)])
+  plot.type <- match.arg(plot.type)
+  if (is.null(xlab))
+    xlab <- paste('bw=', round(x$density$bw,3), sep='')
+  if (is.null(ylab))
+    ylab <- 'Kernel Density Estimates'
+  if (is.null(main))
+    main <- 'Areas under the curve'
+  plot(x$density, plot.type=plot.type, xlab=xlab, ylab=ylab, main=main, xlim=xlim, ylim=ylim, ...)
+  if (plot.type=='line') {
+    #abline(h=x$level, lty=2)
+    #abline(v=c(x$zeros), lty=2)
+    for (i in 1:nrow(x$zeros)) {
+      zero1 <- x$zeros[i,1]
+      zero2 <- x$zeros[i,2]
+      inside <- x$density$x >= zero1 & x$density$x <= zero2
+      polygon(x=c(zero2, zero1, x$density$x[inside], zero2),
+              y=c(0,0,x$density$y[inside], 0),
+              density = polygon.control$density,
+              angle = polygon.control$angle,
+              border = polygon.control$border,
+              col = polygon.control$col,
+              lty = polygon.control$lty,
+              fillOddEven = polygon.control$fillOddEven)
+    }
+  } else {
+    warning('Not Yet Implemented for plot.type=circle')
+  }
+}
+
+# pre
+# pigs
+tpigpreres <- modal.region(tpigpre, bw=10, q = 0.5)
+tpigpreres2 <- modal.region(tpigpre, bw=10, q = 0.95)
+
+plot.modal.region(tpigpreres2, ylab="", xlab="", main ="Bearded Pig\npre-logging", ylim = c(0, 0.4),
+                  polygon.control = list(col = "light grey"))
+par(new=TRUE)
+plot.modal.region(tpigpreres, ylab="", xlab="", main ="", ylim = c(0, 0.4),
+                  polygon.control = list(col = "black"))
+
+# lesser mouse-deer
+tmousedeerpreres <- modal.region(tmousedeerpre, bw=10, q = 0.5)
+tmousedeerpreres2 <- modal.region(tmousedeerpre, bw=10, q = 0.95)
+
+plot.modal.region(tmousedeerpreres2, ylab="", xlab="", main ="Lesser Mouse-deer\npre-logging", ylim = c(0, 0.5),
+                  polygon.control = list(col = "light grey"))
+par(new=TRUE)
+plot.modal.region(tmousedeerpreres, ylab="", xlab="", main ="", ylim = c(0, 0.5),
+                  polygon.control = list(col = "black"))
 
 # porcs
-tporcpreres <- modal.region(tporcpre, bw=5, q = 0.5)
-tporcpreres2 <- modal.region(tporcpre, bw=5, q = 0.95)
+tporcpreres <- modal.region(tporcpre, bw=10, q = 0.5)
+tporcpreres2 <- modal.region(tporcpre, bw=10, q = 0.95)
 
-plot.modal.region(tporcpreres2, ylab="", xlab="", main ="pre-logging", ylim = c(0, 0.5),
+plot.modal.region(tporcpreres2, ylab="", xlab="", main ="Malayan Porcupine\npre-logging", ylim = c(0, 0.5),
                   polygon.control = list(col = "light grey"))
 par(new=TRUE)
 plot.modal.region(tporcpreres,ylab="", xlab="", main ="", ylim = c(0, 0.5),
                   polygon.control = list(col = "black"))
 
-#icon
-imgporc<-readJPEG("C:/Users/Admin/OneDrive - Imperial College London/Research projects/Masters thesis/Writing/Figures and Tables/porc.jpg")
-rasterImage(imgporc,4.5,0.27,8.5,0.42)
+# pig-tailed Macaque
+tmacaquepreres <- modal.region(tmacaquepre, bw=10, q = 0.5)
+tmacaquepreres2 <- modal.region(tmacaquepre, bw=10, q = 0.95)
+
+plot.modal.region(tmacaquepreres2, ylab="", xlab="", main ="Pig-tailed Macaque\npre-logging", ylim = c(0, 0.6),
+                  polygon.control = list(col = "light grey"))
+par(new=TRUE)
+plot.modal.region(tmacaquepreres,ylab="", xlab="", main ="", ylim = c(0, 0.6),
+                  polygon.control = list(col = "black"))
+
+# red muntjac
+tmuntjacpreres <- modal.region(tmuntjacpre, bw=10, q = 0.5)
+tmuntjacpreres2 <- modal.region(tmuntjacpre, bw=10, q = 0.95)
+
+plot.modal.region(tmuntjacpreres2, ylab="", xlab="", main ="Red Muntjac\npre-logging", ylim = c(0, 0.4),
+                  polygon.control = list(col = "light grey"))
+par(new=TRUE)
+plot.modal.region(tmuntjacpreres,ylab="", xlab="", main ="", ylim = c(0, 0.4),
+                  polygon.control = list(col = "black"))
+
+# sambar deer
+tsambarpreres <- modal.region(tsambarpre, bw=10, q = 0.5)
+tsambarpreres2 <- modal.region(tsambarpre, bw=10, q = 0.95)
+
+plot.modal.region(tsambarpreres2, ylab="", xlab="", main ="Sambar Deer\npre-logging", ylim = c(0, 0.4),
+                  polygon.control = list(col = "light grey"))
+par(new=TRUE)
+plot.modal.region(tsambarpreres,ylab="", xlab="", main ="", ylim = c(0, 0.4),
+                  polygon.control = list(col = "black"))
 
 # dur
 # pigs
-tpigdurres <- modal.region(tpigdur, bw=5, q = 0.5)
-tpigdurres2 <- modal.region(tpigdur, bw=5, q = 0.95)
+tpigdurres <- modal.region(tpigdur, bw=10, q = 0.5)
+tpigdurres2 <- modal.region(tpigdur, bw=10, q = 0.95)
 
-plot.modal.region(tpigdurres2, ylab="", xlab="", main ="during logging", ylim = c(0, 0.5),
-     polygon.control = list(col = "light grey", border = TRUE))
+plot.modal.region(tpigdurres2, ylab="", xlab="", main ="during logging", ylim = c(0, 0.4),
+                  polygon.control = list(col = "light grey", border = TRUE))
 par(new=TRUE)
-plot.modal.region(tpigdurres, ylab="", xlab="", main ="", ylim = c(0, 0.5),
+plot.modal.region(tpigdurres, ylab="", xlab="", main ="", ylim = c(0, 0.4),
                   polygon.control = list(col = "black"))
-#icon
-imgpig<-readJPEG("C:/Users/Admin/OneDrive - Imperial College London/Research projects/Masters thesis/Writing/Figures and Tables/pig.jpg")
-rasterImage(imgpig,0.1,0.25,4.1,0.45)
+
+# lesser mouse-deer
+tmousedeerdurres <- modal.region(tmousedeerdur, bw=10, q = 0.5)
+tmousedeerdurres2 <- modal.region(tmousedeerdur, bw=10, q = 0.95)
+
+plot.modal.region(tmousedeerdurres2, ylab="", xlab="", main ="during logging", ylim = c(0, 0.5),
+                  polygon.control = list(col = "light grey", border = TRUE))
+par(new=TRUE)
+plot.modal.region(tmousedeerdurres, ylab="", xlab="", main ="", ylim = c(0, 0.5),
+                  polygon.control = list(col = "black"))
 
 # porcs
-tporcdurres <- modal.region(tporcdur, bw=5, q = 0.5)
-tporcdurres2 <- modal.region(tporcdur, bw=5, q = 0.95)
+tporcdurres <- modal.region(tporcdur, bw=10, q = 0.5)
+tporcdurres2 <- modal.region(tporcdur, bw=10, q = 0.95)
 
 plot.modal.region(tporcdurres2, ylab="", xlab="", main ="during logging", ylim = c(0, 0.5),
                   polygon.control = list(col = "light grey", border = TRUE))
@@ -979,41 +1349,103 @@ par(new=TRUE)
 plot.modal.region(tporcdurres,ylab="", xlab="", main ="", ylim = c(0, 0.5),
                   polygon.control = list(col = "black"))
 
-#icon
-imgporc<-readJPEG("C:/Users/Admin/OneDrive - Imperial College London/Research projects/Masters thesis/Writing/Figures and Tables/porc.jpg")
-rasterImage(imgporc,5.5,0.27,9.5,0.42)
+# pig-tailed macaque
+tmacaquedurres <- modal.region(tmacaquedur, bw=10, q = 0.5)
+tmacaquedurres2 <- modal.region(tmacaquedur, bw=10, q = 0.95)
+
+plot.modal.region(tmacaquedurres2, ylab="", xlab="", main ="during logging", ylim = c(0, 0.6),
+                  polygon.control = list(col = "light grey", border = TRUE))
+par(new=TRUE)
+plot.modal.region(tmacaquedurres,ylab="", xlab="", main ="", ylim = c(0, 0.6),
+                  polygon.control = list(col = "black"))
+
+# red muntjac
+tmuntjacdurres <- modal.region(tmuntjacdur, bw=10, q = 0.5)
+tmuntjacdurres2 <- modal.region(tmuntjacdur, bw=10, q = 0.95)
+
+plot.modal.region(tmuntjacdurres2, ylab="", xlab="", main ="during logging", ylim = c(0, 0.4),
+                  polygon.control = list(col = "light grey", border = TRUE))
+par(new=TRUE)
+plot.modal.region(tmuntjacdurres,ylab="", xlab="", main ="", ylim = c(0, 0.4),
+                  polygon.control = list(col = "black"))
+
+# sambar deer
+tsambardurres <- modal.region(tsambardur, bw=10, q = 0.5)
+tsambardurres2 <- modal.region(tsambardur, bw=10, q = 0.95)
+
+plot.modal.region(tsambardurres2, ylab="", xlab="", main ="during logging", ylim = c(0, 0.4),
+                  polygon.control = list(col = "light grey", border = TRUE))
+par(new=TRUE)
+plot.modal.region(tsambardurres,ylab="", xlab="", main ="", ylim = c(0, 0.4),
+                  polygon.control = list(col = "black"))
+
 
 # post
-# pigs
-tpigpostres <- modal.region(tpigpost, bw=5, q = 0.5)
-tpigpostres2 <- modal.region(tpigpost, bw=5, q = 0.95)
 
-plot.modal.region(tpigpostres2, ylab="", xlab="", main ="post-logging", ylim = c(0, 0.5),
-     polygon.control = list(col = "light grey"))
+# pigs
+tpigpostres <- modal.region(tpigpost, bw=10, q = 0.5)
+tpigpostres2 <- modal.region(tpigpost, bw=10, q = 0.95)
+
+plot.modal.region(tpigpostres2, ylab="", xlab="", main ="post-logging", ylim = c(0, 0.4),
+                  polygon.control = list(col = "light grey"))
 par(new=TRUE)
-plot.modal.region(tpigpostres, ylab="", xlab="", main ="", ylim = c(0, 0.5),
+plot.modal.region(tpigpostres, ylab="", xlab="", main ="", ylim = c(0, 0.4),
                   polygon.control = list(col = "black"))
-#icon
-imgpig<-readJPEG("C:/Users/Admin/OneDrive - Imperial College London/Research projects/Masters thesis/Writing/Figures and Tables/pig.jpg")
-rasterImage(imgpig,0.1,0.25,4.1,0.45)
+
+# lesser mouse-deer
+tmousedeerpostres <- modal.region(tmousedeerpost, bw=10, q = 0.5)
+tmousedeerpostres2 <- modal.region(tmousedeerpost, bw=10, q = 0.95)
+
+plot.modal.region(tmousedeerpostres2, ylab="", xlab="", main ="post-logging", ylim = c(0, 0.5),
+                  polygon.control = list(col = "light grey"))
+par(new=TRUE)
+plot.modal.region(tmousedeerpostres, ylab="", xlab="", main ="", ylim = c(0, 0.5),
+                  polygon.control = list(col = "black"))
 
 # porcs
-tporcpostres <- modal.region(tporcpost, bw=5, q = 0.5)
-tporcpostres2 <- modal.region(tporcpost, bw=5, q = 0.95)
+tporcpostres <- modal.region(tporcpost, bw=10, q = 0.5)
+tporcpostres2 <- modal.region(tporcpost, bw=10, q = 0.95)
 
 plot.modal.region(tporcpostres2, ylab="", xlab="", main ="post-logging", ylim = c(0, 0.5),
-     polygon.control = list(col = "light grey"))
+                  polygon.control = list(col = "light grey"))
 par(new=TRUE)
 plot.modal.region(tporcpostres,ylab="", xlab="", main ="", ylim = c(0, 0.5),
                   polygon.control = list(col = "black"))
 
-# icon
-imgporc<-readJPEG("C:/Users/Admin/OneDrive - Imperial College London/Research projects/Masters thesis/Writing/Figures and Tables/porc.jpg")
-rasterImage(imgporc,5.5,0.27,9.5,0.42)
+# pig-tailed Macaque
+tmacaquepostres <- modal.region(tmacaquepost, bw=10, q = 0.5)
+tmacaquepostres2 <- modal.region(tmacaquepost, bw=10, q = 0.95)
 
-# axes labels
-mtext("Hour in day", side=1, outer=TRUE, line=-2)
-mtext("Density", side=2, outer=TRUE, line=-1.75)
+plot.modal.region(tmacaquepostres2, ylab="", xlab="", main ="post-logging", ylim = c(0, 0.6),
+                  polygon.control = list(col = "light grey"))
+par(new=TRUE)
+plot.modal.region(tmacaquepostres,ylab="", xlab="", main ="", ylim = c(0, 0.6),
+                  polygon.control = list(col = "black"))
+
+# red muntjac
+tmuntjacpostres <- modal.region(tmuntjacpost, bw=10, q = 0.5)
+tmuntjacpostres2 <- modal.region(tmuntjacpost, bw=10, q = 0.95)
+
+plot.modal.region(tmuntjacpostres2, ylab="", xlab="", main ="post-logging", ylim = c(0, 0.4),
+                  polygon.control = list(col = "light grey"))
+par(new=TRUE)
+plot.modal.region(tmuntjacpostres,ylab="", xlab="", main ="", ylim = c(0, 0.4),
+                  polygon.control = list(col = "black"))
+
+# sambar deer
+tsambarpostres <- modal.region(tsambarpost, bw=10, q = 0.5)
+tsambarpostres2 <- modal.region(tsambarpost, bw=10, q = 0.95)
+
+plot.modal.region(tsambarpostres2, ylab="", xlab="", main ="post-logging", ylim = c(0, 0.4),
+                  polygon.control = list(col = "light grey"))
+par(new=TRUE)
+plot.modal.region(tsambarpostres,ylab="", xlab="", main ="", ylim = c(0, 0.4),
+                  polygon.control = list(col = "black"))
+mtext("Hour in day", side = 3, adj = -175, line = -8)
+mtext("Density", side = 2, adj = 27, line = 65)
+
+
+
 
 ##################################################
 
@@ -1155,19 +1587,19 @@ tpigpost <- dt[dat6$Keyword_1=="Bearded Pig" & dat6$logging == "post-logging"]
 
 #subset core activity
 prepigcore.idx <- (tpigpre > as.numeric(tpigpreres$zeros[1,1])/24 * 2 * pi & tpigpre < as.numeric(tpigpreres$zeros[1,2])/24 * 2 * pi) |
-                  (tpigpre > as.numeric(tpigpreres$zeros[2,1])/24 * 2 * pi & tpigpre < as.numeric(tpigpreres$zeros[2,2])/24 * 2 * pi)
+  (tpigpre > as.numeric(tpigpreres$zeros[2,1])/24 * 2 * pi & tpigpre < as.numeric(tpigpreres$zeros[2,2])/24 * 2 * pi)
 prepigcore <- as.numeric(tpigpre[prepigcore.idx])
 
 durpigcore.idx <- (tpigdur > as.numeric(tpigdurres$zeros[1,1])/24 * 2 * pi & tpigdur < as.numeric(tpigdurres$zeros[1,2]))/24 * 2 * pi |
-                  (tpigdur > as.numeric(tpigdurres$zeros[2,1])/24 * 2 * pi & tpigdur < as.numeric(tpigdurres$zeros[2,2]))/24 * 2 * pi |
-                  (tpigdur > as.numeric(tpigdurres$zeros[3,1])/24 * 2 * pi & tpigdur < as.numeric(tpigdurres$zeros[3,2]))/24 * 2 * pi |
-                  (tpigdur > as.numeric(tpigdurres$zeros[4,1])/24 * 2 * pi & tpigdur < as.numeric(tpigdurres$zeros[4,2]))/24 * 2 * pi |
-                  (tpigdur > as.numeric(tpigdurres$zeros[5,1])/24 * 2 * pi & tpigdur < as.numeric(tpigdurres$zeros[5,2]))/24 * 2 * pi 
+  (tpigdur > as.numeric(tpigdurres$zeros[2,1])/24 * 2 * pi & tpigdur < as.numeric(tpigdurres$zeros[2,2]))/24 * 2 * pi |
+  (tpigdur > as.numeric(tpigdurres$zeros[3,1])/24 * 2 * pi & tpigdur < as.numeric(tpigdurres$zeros[3,2]))/24 * 2 * pi |
+  (tpigdur > as.numeric(tpigdurres$zeros[4,1])/24 * 2 * pi & tpigdur < as.numeric(tpigdurres$zeros[4,2]))/24 * 2 * pi |
+  (tpigdur > as.numeric(tpigdurres$zeros[5,1])/24 * 2 * pi & tpigdur < as.numeric(tpigdurres$zeros[5,2]))/24 * 2 * pi 
 durpigcore <- as.numeric(tpigdur[durpigcore.idx])/24 * 2 * pi
 
 postpigcore.idx <- (tpigpost > as.numeric(tpigpostres$zeros[1,1]) & tpigpost < as.numeric(tpigpostres$zeros[1,2]))
 postpigcore <- as.numeric(tpigpost[postpigcore.idx])
-    
+
 #overlap 
 overlapPlot(prepigcore, durpigcore)
 overlapPlot(prepigcore, postpigcore)
